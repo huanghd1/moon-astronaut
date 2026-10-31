@@ -150,7 +150,7 @@ export function createTerrain(seed = 1969) {
     rockCount: rocks.count,
     heightRange: hMax - hMin,
   };
-  return { mesh, rocks, heightAt, stats };
+  return { mesh, rocks, heightAt, stats, craters }; // craters 供小地图标注地标
 }
 
 // 可平铺的细碎月壤法线贴图（4D 噪声绕环面采样实现无缝）

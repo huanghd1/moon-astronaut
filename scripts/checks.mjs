@@ -276,4 +276,79 @@ step7.push({
     return { ok, info: `bakes ${a.bakes}->${b.bakes} newTex ${b.tex !== a.tex} envSun moved ${moved}` };
   },
 });
-export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7 };
+const step8 = [];
+step8.push({
+  name: "minimap: round 2D canvas, upper-right, not covering sun",
+  atSpawn: true,
+  async run(page) {
+    const r = await page.evaluate(() => {
+      const c = document.getElementById("minimap");
+      if (!c) return null;
+      const b = c.getBoundingClientRect(), s = getComputedStyle(c);
+      const sun = window.__game.project("sunDisc");
+      const sx = sun.x * innerWidth, sy = sun.y * innerHeight;
+      // 太阳与雷达外接矩形的最小距离（含 40px 光晕余量）
+      const gap = Math.hypot(Math.max(b.left - sx, 0, sx - b.right), Math.max(b.top - sy, 0, sy - b.bottom));
+      return {
+        w: b.width, h: b.height, right: innerWidth - b.right, top: b.top,
+        round: s.borderRadius === "50%", ctx2d: !!c.getContext("2d"), gap,
+      };
+    });
+    if (!r) return { ok: false, info: "no #minimap" };
+    const ok = r.round && r.ctx2d && r.w >= 120 && Math.abs(r.w - r.h) < 1 &&
+      r.right < 60 && r.top < 1080 * 0.45 && r.gap > 40;
+    return { ok, info: JSON.stringify({ ...r, gap: Math.round(r.gap) }) };
+  },
+});
+step8.push({
+  name: "minimap tracks WASD movement and heading",
+  async run(page) {
+    const mm = () => page.evaluate(() => window.__game.minimapState());
+    const a = await mm();
+    await holdKey(page, "KeyW", 1200);
+    const b = await mm();
+    // 玩家正前方 10m 的点必须画在雷达中心正上方（航向朝上）
+    const ahead = await page.evaluate((s) => window.__game.minimap.toRadar(s, s.x + s.fx * 10, s.z + s.fz * 10), b);
+    await holdKey(page, "KeyD", 1200);
+    const c = await mm();
+    const moved = Math.hypot(b.x - a.x, b.z - a.z);
+    const turnDeg = (Math.acos(Math.min(1, Math.max(-1, b.fx * c.fx + b.fz * c.fz))) * 180) / Math.PI;
+    const R = 100; // 雷达半径（CSS 200px / 2）
+    const upOk = Math.abs(ahead[0] - R) < 1 && ahead[1] < R - 5;
+    const ok = moved > 1 && turnDeg > 20 && upOk;
+    return { ok, info: `moved ${moved.toFixed(2)}m turn ${turnDeg.toFixed(0)}° ahead→(${ahead.map((v) => v.toFixed(0))})` };
+  },
+});
+step8.push({
+  name: "robot buddy follows ~2m behind-right, grounded, smooth",
+  async run(page) {
+    const info = () => page.evaluate(() => window.__game.buddyInfo());
+    await page.waitForTimeout(1500); // 停稳，跟班追上
+    const rest = await info();
+    // 行走途中采样：平滑插值意味着会略微落后于目标点（但不会丢）
+    await page.mouse.click(960, 540);
+    await page.keyboard.down("KeyW");
+    await page.waitForTimeout(900);
+    const walking = await info();
+    await page.keyboard.up("KeyW");
+    await page.waitForTimeout(2000);
+    const settled = await info();
+    const placeOk = rest.right > 0.8 && rest.back > 0.8 && Math.abs(rest.dist - 2) < 0.4;
+    const smoothOk = walking.goalGap > 0.05 && walking.goalGap < 3 && walking.anim !== "Idle";
+    const settleOk = settled.goalGap < 0.15 && settled.groundGap < 0.01;
+    const f = (o) => `d${o.dist.toFixed(2)} r${o.right.toFixed(2)} b${o.back.toFixed(2)} gap${o.goalGap.toFixed(2)} ${o.anim}`;
+    return { ok: placeOk && smoothOk && settleOk, info: `rest[${f(rest)}] walk[${f(walking)}] settled[${f(settled)}]` };
+  },
+});
+step8.push({
+  name: "astronaut body bulkier, helmet unchanged",
+  atSpawn: true,
+  async run(page) {
+    const r = await page.evaluate(() => window.__game.bodyMetrics());
+    // 原头盔壳半径 0.2H、面罩 0.205H；原上臂 0.07H、大腿 0.085H
+    const headOk = Math.abs(r.helmet - 0.2) < 1e-6 && Math.abs(r.visor - 0.205) < 1e-6;
+    const bulkOk = r.upperArm > 0.07 * 1.15 && r.thigh > 0.085 * 1.15 && r.torso > 0.15 * 1.15;
+    return { ok: headOk && bulkOk, info: JSON.stringify(r) };
+  },
+});
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8 };

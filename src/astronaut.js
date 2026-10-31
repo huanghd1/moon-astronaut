@@ -85,21 +85,27 @@ export function buildAstronaut(root) {
   };
 
   // 躯干（胶囊）+ 骨盆 + 腰带
-  add("Torso", segment(up(hips, 0.08), up(neck, -0.02), 0.15 * H, mats.suit));
-  place("Hips", sph(0.145 * H, mats.suit), hips);
-  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.147 * H, 0.016 * H, 8, 32), mats.seam);
+  // 身体粗壮系数：只作用于躯干/四肢，头盔、面罩、颈环不动
+  const BULK = 1.22;
+  add("Torso", segment(up(hips, 0.08), up(neck, -0.06), 0.15 * H * BULK, mats.suit));
+  place("Hips", sph(0.145 * H * BULK, mats.suit), hips);
+  // 胸甲：压扁的椭球，宽肩厚胸的力量感
+  const chestPlate = sph(0.17 * H, mats.suit, 28, 18);
+  chestPlate.scale.set(1.45, 0.95, 1.0);
+  place("Torso", chestPlate, hips.clone().lerp(neck, 0.68));
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.147 * H * BULK, 0.018 * H, 8, 32), mats.seam);
   belt.rotation.x = Math.PI / 2;
   place("Hips", belt, up(hips, 0.06));
   // 生命维持背包（PLSS）+ 两个氧气罐，在背后 -Z（角色面朝 +Z）
   const chest = hips.clone().lerp(neck, 0.6);
-  place("Torso", new THREE.Mesh(new THREE.BoxGeometry(0.36 * H, 0.42 * H, 0.17 * H), mats.pack), chest.clone().add(new THREE.Vector3(0, 0.02 * H, -0.19 * H)));
+  place("Torso", new THREE.Mesh(new THREE.BoxGeometry(0.36 * H, 0.42 * H, 0.17 * H), mats.pack), chest.clone().add(new THREE.Vector3(0, 0.02 * H, -0.23 * H))); // 躯干变厚，背包后移
   const tankGeo = new THREE.CylinderGeometry(0.045 * H, 0.045 * H, 0.38 * H, 14);
   for (const sx of [-1, 1]) {
-    const p = chest.clone().add(new THREE.Vector3(sx * 0.1 * H, 0.03 * H, -0.3 * H));
+    const p = chest.clone().add(new THREE.Vector3(sx * 0.1 * H, 0.03 * H, -0.34 * H));
     place("Torso", new THREE.Mesh(tankGeo, mats.metal), p);
   }
   // 胸前控制盒 + 状态灯
-  const boxPos = chest.clone().add(new THREE.Vector3(0, -0.04 * H, 0.15 * H));
+  const boxPos = chest.clone().add(new THREE.Vector3(0, -0.04 * H, 0.18 * H)); // 贴在加厚的胸甲外
   const boxGeo = new THREE.BoxGeometry(0.17 * H, 0.09 * H, 0.06 * H);
   place("Torso", new THREE.Mesh(boxGeo, mats.pack), boxPos);
   const ledPos = boxPos.clone().add(new THREE.Vector3(0.05 * H, 0.015 * H, 0.032 * H));
@@ -108,17 +114,17 @@ export function buildAstronaut(root) {
   for (const s of ["L", "R"]) {
     const sh = wp("UpperArm." + s), el = wp("LowerArm." + s);
     const hand = el.clone().add(el.clone().sub(sh).multiplyScalar(0.9));
-    add("UpperArm." + s, segment(sh, el, 0.07 * H, mats.suit));
-    place("UpperArm." + s, sph(0.085 * H, mats.suit), sh);
-    add("LowerArm." + s, segment(el, hand, 0.062 * H, mats.suit));
-    place("LowerArm." + s, sph(0.07 * H, mats.glove), hand);
+    add("UpperArm." + s, segment(sh, el, 0.07 * H * BULK, mats.suit));
+    place("UpperArm." + s, sph(0.085 * H * BULK * 1.08, mats.suit), sh); // 肩部护垫更厚
+    add("LowerArm." + s, segment(el, hand, 0.062 * H * BULK, mats.suit));
+    place("LowerArm." + s, sph(0.07 * H * BULK, mats.glove), hand);
   }
   // 腿：髋 -> 膝 -> 脚踝；靴子挂在 IK 脚骨上
   for (const s of ["L", "R"]) {
     const hip = wp("UpperLeg." + s), knee = wp("LowerLeg." + s), foot = wp("Foot." + s);
-    add("UpperLeg." + s, segment(hip, knee, 0.085 * H, mats.suit));
-    add("LowerLeg." + s, segment(knee, up(foot, 0.04), 0.075 * H, mats.suit));
-    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.13 * H, 0.08 * H, 0.2 * H), mats.boot);
+    add("UpperLeg." + s, segment(hip, knee, 0.085 * H * BULK, mats.suit));
+    add("LowerLeg." + s, segment(knee, up(foot, 0.04), 0.075 * H * BULK, mats.suit));
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.13 * H * BULK, 0.09 * H, 0.21 * H * BULK), mats.boot);
     place("Foot." + s, boot, foot.clone().add(new THREE.Vector3(0, 0.03 * H, 0.03 * H)));
   }
   // 头盔：大白壳 + 金色面罩（半球朝前 +Z）+ 颈环
@@ -139,5 +145,5 @@ export function buildAstronaut(root) {
   band.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), elL.clone().sub(shL).normalize());
   place("UpperArm.L", band, shL.clone().lerp(elL, 0.45));
   root.name = "astronaut";
-  return { root, materials: mats, parts };
+  return { root, materials: mats, parts, H };
 }

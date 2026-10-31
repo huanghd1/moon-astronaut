@@ -8,6 +8,8 @@ import { createPost } from "./post.js";
 import { buildAstronaut } from "./astronaut.js";
 import { createReflectionEnv } from "./envmap.js";
 import { createGui } from "./gui.js";
+import { createCompanion } from "./companion.js";
+import { createMinimap } from "./minimap.js";
 
 // 角色高度 = 180 * SCALE（控制器内部按 180 归一化）
 const SCALE = 0.01;
@@ -79,6 +81,23 @@ const astroEnv = createReflectionEnv(renderer, sky.sunDir, sky.earthDir);
 astroEnv.bind(Object.values(astronaut.materials));
 astroEnv.update();
 
+// 小机器人跟班：另载一份 CC0 RobotExpressive（宇航员那份的外形已被替换）
+const buddyGltf = await new GLTFLoader().loadAsync("/models/RobotExpressive.glb");
+const buddy = createCompanion(buddyGltf, moon.heightAt);
+scene.add(buddy.root);
+
+// 圆形雷达小地图（Canvas 2D）
+const minimap = createMinimap(moon.craters);
+const mmPos = new THREE.Vector3(), mmFwd = new THREE.Vector3(), mmQ = new THREE.Quaternion();
+const mmState = { x: 0, z: 0, fx: 0, fz: 1 };
+function updateMinimap() {
+  const m = player.playerModel;
+  m.getWorldPosition(mmPos);
+  mmFwd.set(0, 0, 1).applyQuaternion(m.getWorldQuaternion(mmQ)).setY(0).normalize();
+  Object.assign(mmState, { x: mmPos.x, z: mmPos.z, fx: mmFwd.x, fz: mmFwd.z });
+  minimap.draw(mmState, buddy.root.position);
+}
+
 const player = new playerController();
 await player.init({
   scene,
@@ -133,8 +152,13 @@ const clock = new THREE.Clock();
 let frames = 0;
 function animate() {
   requestAnimationFrame(animate);
-  player.update(Math.min(clock.getDelta(), 0.05));
-  if (player.playerModel) followSun(player.playerModel.position);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  player.update(dt);
+  if (player.playerModel) {
+    followSun(player.playerModel.position);
+    buddy.update(dt, player.playerModel);
+    updateMinimap();
+  }
   earthshine.position.copy(sky.earthDir);
   sky.update(camera, renderer, clock.elapsedTime);
   astroEnv.update(); // 仅在太阳/地球方向变了之后烘焙一次
@@ -170,6 +194,38 @@ window.__game = {
   astronaut,
   gui,
   astroEnv,
+  buddy,
+  minimap,
+  minimapState: () => ({ ...mmState }),
+  // 读真实几何参数（以头部高度 H 归一化），验证"身体加粗、头不动"
+  bodyMetrics() {
+    const H = astronaut.H, onBone = (re) => astronaut.parts.filter((m) => re.test(m.parent.name));
+    const isCap = (m) => m.geometry.type === "CapsuleGeometry";
+    const cap = (re) => Math.max(...onBone(re).filter(isCap).map((m) => m.geometry.parameters.radius)) / H;
+    const head = onBone(/^Head/).filter((m) => m.geometry.type === "SphereGeometry");
+    const visor = astronaut.root.getObjectByName("visor");
+    const shell = head.find((m) => m !== visor);
+    return {
+      helmet: shell.geometry.parameters.radius / H,
+      visor: visor.geometry.parameters.radius / H,
+      torso: cap(/^Torso/), upperArm: cap(/^UpperArm/), thigh: cap(/^UpperLeg/),
+    };
+  },
+  buddyInfo() {
+    const goal = buddy.goal(player.playerModel);
+    const p = buddy.root.position, me = player.playerModel.getWorldPosition(new THREE.Vector3());
+    // 换算到玩家坐标系：right>0 在右手边，back>0 在身后
+    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(player.playerModel.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize();
+    const dx = p.x - me.x, dz = p.z - me.z;
+    const right = -dx * f.z + dz * f.x;
+    const back = -(dx * f.x + dz * f.z);
+    return {
+      dist: Math.hypot(dx, dz), right, back,
+      goalGap: Math.hypot(p.x - goal.x, p.z - goal.z),
+      groundGap: Math.abs(p.y - moon.heightAt(p.x, p.z)),
+      anim: buddy.animation,
+    };
+  },
   astronautInfo() {
     let robotMeshes = 0;
     const own = new Set(astronaut.parts);
