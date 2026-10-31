@@ -405,4 +405,153 @@ step9.push({
     return { ok: s.on === true && Math.abs(s.dy) < 0.6, info: JSON.stringify(s) };
   },
 });
-export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8, 9: step9 };
+// 第 10 步：太阳光斑收紧；流星/彗星；天象面板
+const ev = (page, fn, arg) => page.evaluate(fn, arg);
+const quiet = (page) => ev(page, () => {
+  const e = window.__game.sky.events;
+  e.settings.meteorRate = 0; e.settings.cometRate = 0; e.clear();
+});
+// 恢复面板默认值（含天象），并清空正在飞的流星/彗星
+const restore = (page) => ev(page, () => { window.__game.gui.reset(); window.__game.sky.events.clear(); });
+
+const step10 = [];
+step10.push({
+  name: "sun glare tightened: bloom lowered, halo falls off fast, disc still bright",
+  atSpawn: true, // 要在默认镜头下量太阳，必须排在会移动玩家的断言之前
+  async run(page) {
+    await restore(page);
+    await quiet(page);
+    await page.waitForTimeout(400);
+    const r = await ev(page, () => ({ sun: window.__game.project("sunDisc"), bloom: window.__game.post.settings.bloomStrength }));
+    if (!r.sun || !r.sun.inFront) return { ok: false, info: "sun not in view " + JSON.stringify(r) };
+    const W = 1920, H = 1080, cx = r.sun.x * W, cy = r.sun.y * H;
+    const box = (x, y, h) => [(x - h) / W, (y - h) / H, (x + h) / W, (y + h) / H];
+    const disc = await regionLuma(page, box(cx, cy, 3));
+    const ring60 = await regionLuma(page, box(cx - 60, cy, 4));
+    await restore(page);
+    const ok = r.bloom <= 0.3 && disc > 0.55 && ring60 < 0.3;
+    return { ok, info: `bloom ${r.bloom} disc ${disc.toFixed(3)} ring@60px ${ring60.toFixed(3)} (step9 ~0.44)` };
+  },
+});
+step10.push({
+  name: "comet angular speed is exactly 1/4 of meteor speed (measured in flight)",
+  async run(page) {
+    await quiet(page);
+    const r = await ev(page, () => new Promise((res) => {
+      const e = window.__game.sky.events;
+      e.spawn("meteor", 0.1); e.spawn("comet", 1);
+      const ang = (a, b) => Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]));
+      const m0 = e.head("meteor"), c0 = e.head("comet");
+      setTimeout(() => {
+        const m1 = e.head("meteor"), c1 = e.head("comet");
+        res({ m: m1 && ang(m0, m1), c: c1 && ang(c0, c1), cfg: [e.stats().meteorSpeed, e.stats().cometSpeed] });
+      }, 250);
+    }));
+    await restore(page);
+    const ratio = r.c / r.m;
+    const ok = r.cfg[1] === r.cfg[0] / 4 && Math.abs(ratio - 0.25) < 0.02;
+    return { ok, info: `meteor ${r.m?.toFixed(4)} rad, comet ${r.c?.toFixed(4)} rad, ratio ${ratio.toFixed(3)}` };
+  },
+});
+step10.push({
+  name: "Sky Events folder has the 4 sliders; rate sliders change spawning live",
+  async run(page) {
+    await quiet(page);
+    const names = await ev(page, () => {
+      const f = window.__game.gui.folders.find((x) => x._title.includes("天象"));
+      return f ? f.controllers.map((c) => c.property) : [];
+    });
+    const count = (prop, v, ms) => ev(page, ([p, val, t]) => new Promise((res) => {
+      const g = window.__game.gui, e = window.__game.sky.events;
+      g.controllersRecursive().find((c) => c.property === p).setValue(val);
+      const k = p === "meteorRate" ? "spawnedMeteors" : "spawnedComets";
+      const n0 = e.stats()[k];
+      setTimeout(() => res(e.stats()[k] - n0), t);
+    }), [prop, v, ms]);
+    const mOff = await count("meteorRate", 0, 1500), mOn = await count("meteorRate", 4, 1500);
+    await count("meteorRate", 0, 0);
+    const cOff = await count("cometRate", 0, 1500), cOn = await count("cometRate", 0.5, 3000);
+    await restore(page);
+    const want = ["meteorRate", "meteorIntensity", "cometRate", "cometIntensity"];
+    const ok = want.every((w) => names.includes(w)) && mOff === 0 && mOn >= 2 && cOff === 0 && cOn >= 1;
+    return { ok, info: `sliders[${names}] meteors off ${mOff} on ${mOn}, comets off ${cOff} on ${cOn}` };
+  },
+});
+step10.push({
+  name: "intensity sliders change brightness and tail length live",
+  async run(page) {
+    await quiet(page);
+    // 生成一颗、读它写进 GPU 的尾长和亮度；改强度后下一帧再读
+    const probe = (kind, prop, v) => ev(page, async ([k, p, val]) => {
+      const g = window.__game, e = g.sky.events;
+      const c = g.gui.controllersRecursive().find((x) => x.property === p);
+      c.setValue(val);
+      e.clear();
+      // 彗星飞满 6 秒、流星 0.4 秒：头已跑过最长尾长，尾巴已完全展开，量到的才是强度决定的尾长
+      e.spawn(k, k === "comet" ? 6 : 0.4);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return e.streak(k);
+    }, [kind, prop, v]);
+    // 0.3 -> 1：两种强度下尾巴都已完全展开（spawn 把年龄截到寿命一半，太高的强度尾巴还没长满）
+    const m1 = await probe("meteor", "meteorIntensity", 0.3), m2 = await probe("meteor", "meteorIntensity", 1);
+    const c1 = await probe("comet", "cometIntensity", 0.3), c2 = await probe("comet", "cometIntensity", 1);
+    await restore(page);
+    const up = (a, b) => a && b && b.alpha > a.alpha * 1.5 && b.length > a.length * 1.2;
+    const f = (s) => s ? `${s.length.toFixed(3)}rad/a${s.alpha.toFixed(2)}` : "none";
+    return { ok: !!(up(m1, m2) && up(c1, c2)), info: `meteor ${f(m1)} -> ${f(m2)}, comet ${f(c1)} -> ${f(c2)}` };
+  },
+});
+step10.push({
+  name: "sky events stay out of the way: far-plane depth, random above horizon, 1 mesh each",
+  async run(page) {
+    await quiet(page);
+    const r = await ev(page, () => {
+      const e = window.__game.sky.events;
+      const ys = [], az = [];
+      for (let i = 0; i < 40; i++) {
+        e.clear(); e.spawn("meteor");
+        const h = e.head("meteor");
+        ys.push(h[1]); az.push(Math.atan2(h[0], h[2]));
+      }
+      e.clear();
+      const vs = e.meteors.material.vertexShader + e.comets.material.vertexShader;
+      return {
+        minY: Math.min(...ys),
+        azSpread: Math.max(...az) - Math.min(...az),
+        farDepth: (vs.match(/gl_Position\.z = gl_Position\.w/g) || []).length,
+        meshes: e.group.children.length,
+        noDepthWrite: !e.meteors.material.depthWrite && !e.comets.material.depthWrite,
+      };
+    });
+    await restore(page);
+    // sin(7°)≈0.12：起点都在地平线以上；方位角铺满大半圈说明是随机分布而不是固定位置
+    const ok = r.minY > 0.11 && r.azSpread > 4 && r.farDepth === 2 && r.meshes === 2 && r.noDepthWrite;
+    return { ok, info: JSON.stringify(r) };
+  },
+});
+// 固定时间窗里数渲染帧
+const fpsOver = (page, ms) => ev(page, (t) => new Promise((res) => {
+  const f0 = window.__game.frames, t0 = performance.now();
+  setTimeout(() => res((window.__game.frames - f0) / ((performance.now() - t0) / 1000)), t);
+}), ms);
+step10.push({
+  name: "frame rate holds with sky events maxed out (vs events off)",
+  async run(page) {
+    await quiet(page);
+    const off = await fpsOver(page, 2500);
+    // 拉满：流星 4 颗/秒、强度 3，彗星 0.5 颗/秒、强度 3，再先塞满所有槽位
+    await ev(page, () => {
+      const e = window.__game.sky.events;
+      e.set({ meteorRate: 4, meteorIntensity: 3, cometRate: 0.5, cometIntensity: 3 });
+      for (let i = 0; i < 12; i++) e.spawn("meteor", Math.random() * 0.5);
+      for (let i = 0; i < 3; i++) e.spawn("comet", Math.random() * 5);
+    });
+    const on = await fpsOver(page, 2500);
+    const n = await ev(page, () => window.__game.sky.events.stats());
+    await restore(page);
+    // 天象只是两张动态 Mesh：帧率掉幅不能超过 15%（无头浏览器帧率有抖动，留点余量）
+    const ok = on >= off * 0.85 && n.meteors > 0;
+    return { ok, info: `fps off ${off.toFixed(1)} -> maxed ${on.toFixed(1)}, live meteors ${n.meteors} comets ${n.comets}` };
+  },
+});
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8, 9: step9, 10: step10 };

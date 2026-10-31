@@ -85,10 +85,11 @@ export function createSun(radius) {
         float r = length(vUv) * 8.0;  // 1.0 = 日面边缘
         float disc = 1.0 - smoothstep(0.96, 1.0, r);
         float limb = mix(0.75, 1.0, sqrt(max(1.0 - r * r, 0.0)));
-        float corona = exp(-(r - 1.0) * 1.6) * step(1.0, r) * 0.6 + exp(-r * 0.35) * 0.08;
+        // 第 10 步调暗：日面 HDR 30 -> 12，日冕/星芒同比例降，泛光只剩贴着边缘的一圈柔光
+        float corona = exp(-(r - 1.0) * 1.6) * step(1.0, r) * 0.24 + exp(-r * 0.35) * 0.03;
         float ang = atan(vUv.y, vUv.x);
-        float rays = pow(abs(cos(ang * 3.0 + 0.4)), 400.0) * exp(-r * 0.6) * 0.35;
-        vec3 col = vec3(1.0, 0.97, 0.92) * disc * limb * 30.0 + vec3(1.0, 0.86, 0.68) * (corona + rays);
+        float rays = pow(abs(cos(ang * 3.0 + 0.4)), 400.0) * exp(-r * 0.6) * 0.14;
+        vec3 col = vec3(1.0, 0.97, 0.92) * disc * limb * 12.0 + vec3(1.0, 0.86, 0.68) * (corona + rays);
         gl_FragColor = vec4(col * uIntensity, 1.0);
         ${OUTPUT_GLSL}
       }`,

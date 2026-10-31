@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createMilkyWay, createStars } from "./milkyway.js";
 import { createEarth, createSun, createPlanets } from "./bodies.js";
+import { createSkyEvents } from "./events.js";
 
 const R = 4000; // 天穹半径（相机 far = 5000）
 const deg = THREE.MathUtils.degToRad;
@@ -38,7 +39,9 @@ export function createSky(params = {}) {
     { name: "mars", dir: dirFromAngles(-120, 30), color: 0xff8a5c, bright: 0.8, size: 0.004 },
     { name: "saturn", dir: dirFromAngles(150, 45), color: 0xffe9b0, bright: 0.7, size: 0.004 },
   ]);
-  group.add(milkyWay, stars, planets, sun, earth);
+  // 天象（流星/彗星）：运行时随机，不需要可复现，直接用 Math.random
+  const events = createSkyEvents(R * 0.96, Math.random);
+  group.add(milkyWay, stars, planets, events.group, sun, earth);
 
   const sunDir = new THREE.Vector3();
   const earthDir = new THREE.Vector3();
@@ -64,6 +67,7 @@ export function createSky(params = {}) {
     earth,
     sun,
     stars,
+    events,
     set(patch) {
       Object.assign(settings, patch);
       apply();
@@ -76,6 +80,7 @@ export function createSky(params = {}) {
       tmpQ.copy(earth.quaternion).invert();
       earth.material.uniforms.uSunDir.value.copy(sunDir).applyQuaternion(tmpQ);
       earth.material.uniforms.uTime.value = t;
+      events.update(t);
     },
   };
 }

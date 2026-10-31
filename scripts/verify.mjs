@@ -41,6 +41,21 @@ try {
   const shot = `artifacts/step${step}.png`;
   await page.screenshot({ path: shot });
   console.log(`screenshot ${shot}`);
+  // 第 10 步起：默认镜头前方的天空里放一颗彗星 + 几颗流星，另存一张天象截图
+  if (step >= 10) {
+    await page.evaluate(async () => {
+      const { dirFromAngles } = await import("/src/sky/index.js");
+      const e = window.__game.sky.events;
+      e.set({ meteorRate: 0, cometRate: 0 }); e.clear();
+      e.spawn("comet", 3, dirFromAngles(-8, 30));
+      for (const [az, el] of [[20, 28], [-35, 22], [5, 40]]) e.spawn("meteor", 0.32, dirFromAngles(az, el));
+    });
+    await page.waitForTimeout(120);
+    await page.screenshot({ path: `artifacts/step${step}-sky.png` });
+    console.log(`screenshot artifacts/step${step}-sky.png`);
+    await page.evaluate(() => { window.__game.gui.reset(); window.__game.sky.events.clear(); });
+  }
+
   // 第 7 步起：另存一张展开环境面板的截图
   if (step >= 7) {
     await page.evaluate(() => window.__game.gui.open().foldersRecursive().forEach((f) => f.open()));

@@ -15,6 +15,13 @@ export function createGui({ sky, post, terrain, sunLight, renderer, onSkyChange 
   fSky.add(s, "starIntensity", 0, 3, 0.05).name("星空亮度").onChange(applySky);
   fSky.add(s, "milkyWay", 0, 3, 0.05).name("银河亮度").onChange(applySky);
   fSky.add(sunLight, "intensity", 0, 10, 0.1).name("太阳光强");
+  // 天象：直接改 events.settings，下一帧生效（频率=泊松过程的速率，强度=亮度+尾长）
+  const ev = sky.events.settings;
+  const fEvents = gui.addFolder("天象 Sky Events");
+  fEvents.add(ev, "meteorRate", 0, 4, 0.05).name("流星出现频率");
+  fEvents.add(ev, "meteorIntensity", 0, 3, 0.05).name("流星强度");
+  fEvents.add(ev, "cometRate", 0, 0.5, 0.01).name("彗星出现频率");
+  fEvents.add(ev, "cometIntensity", 0, 3, 0.05).name("彗星强度");
   const p = post.settings;
   const applyPost = () => post.set({});
   const fPost = gui.addFolder("镜头 Post");

@@ -9,7 +9,7 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 export const POST_DEFAULTS = {
   enabled: true,
   exposure: 1.05,
-  bloomStrength: 0.42,
+  bloomStrength: 0.25, // 第 10 步从 0.42 调低：太阳不再糊成一大片白光
   bloomRadius: 0.3,
   bloomThreshold: 2.2, // HDR 线性亮度，只让太阳、亮星、高光泛光
   vignette: 0.42,
