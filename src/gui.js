@@ -1,11 +1,11 @@
 import GUI from "lil-gui";
 
 // 环境面板：每个控件 onChange 直接改 uniform / 材质 / 灯光，画面实时变化
-export function createGui({ sky, post, terrain, sunLight, renderer }) {
+export function createGui({ sky, post, terrain, sunLight, renderer, onSkyChange = () => {} }) {
   const gui = new GUI({ title: "环境 Environment" });
   gui.close(); // 默认折叠，不遮挡右上角的太阳构图
   const s = sky.settings;
-  const applySky = () => sky.set({});
+  const applySky = () => { sky.set({}); onSkyChange(); };
   const fSky = gui.addFolder("天空 Sky");
   fSky.add(s, "sunAzimuth", -180, 180, 1).name("太阳方位角").onChange(applySky);
   fSky.add(s, "sunElevation", -5, 80, 0.5).name("太阳仰角").onChange(applySky);

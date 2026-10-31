@@ -258,4 +258,22 @@ const step7 = [
     },
   },
 ];
+step7.push({
+  name: "visor reflection re-bakes when sun moves",
+  async run(page) {
+    const st = () => page.evaluate(() => {
+      const e = window.__game.astroEnv;
+      const v = window.__game.astronaut.root.getObjectByName("visor").material;
+      return { bakes: e.bakes, tex: v.envMap?.uuid, same: v.envMap === e.texture, sun: e.sunMesh.position.toArray() };
+    });
+    const a = await st();
+    await guiSet(page, "sunAzimuth", -90);
+    await page.waitForTimeout(200);
+    const b = await st();
+    await page.evaluate(() => window.__game.gui.reset());
+    const moved = Math.hypot(...a.sun.map((v, i) => v - b.sun[i])) > 5;
+    const ok = b.bakes > a.bakes && b.tex !== a.tex && b.same && moved;
+    return { ok, info: `bakes ${a.bakes}->${b.bakes} newTex ${b.tex !== a.tex} envSun moved ${moved}` };
+  },
+});
 export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7 };

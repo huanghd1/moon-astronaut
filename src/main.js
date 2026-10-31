@@ -6,7 +6,7 @@ import { createTerrain } from "./terrain.js";
 import { createSky } from "./sky/index.js";
 import { createPost } from "./post.js";
 import { buildAstronaut } from "./astronaut.js";
-import { bakeReflectionEnv } from "./envmap.js";
+import { createReflectionEnv } from "./envmap.js";
 import { createGui } from "./gui.js";
 
 // 角色高度 = 180 * SCALE（控制器内部按 180 归一化）
@@ -74,8 +74,10 @@ scene.add(rimLight, rimLight.target);
 // 骨骼与动画来自 CC0 机器人，外形替换为几何体拼的小宇航员
 const gltf = await new GLTFLoader().loadAsync("/models/RobotExpressive.glb");
 const astronaut = buildAstronaut(gltf.scene);
-const astroEnv = bakeReflectionEnv(renderer, SUN_DIR);
-for (const m of Object.values(astronaut.materials)) m.envMap = astroEnv;
+// 面罩反射环境：跟随太阳/地球方向，方向变化时重新烘焙 PMREM
+const astroEnv = createReflectionEnv(renderer, sky.sunDir, sky.earthDir);
+astroEnv.bind(Object.values(astronaut.materials));
+astroEnv.update();
 
 const player = new playerController();
 await player.init({
@@ -125,7 +127,7 @@ const post = createPost(renderer, scene, camera);
 post.setSize(window.innerWidth, window.innerHeight);
 
 // 环境面板（右上角，可折叠）
-const gui = createGui({ sky, post, terrain, sunLight: sun, renderer });
+const gui = createGui({ sky, post, terrain, sunLight: sun, renderer, onSkyChange: () => astroEnv.invalidate() });
 
 const clock = new THREE.Clock();
 let frames = 0;
@@ -135,6 +137,7 @@ function animate() {
   if (player.playerModel) followSun(player.playerModel.position);
   earthshine.position.copy(sky.earthDir);
   sky.update(camera, renderer, clock.elapsedTime);
+  astroEnv.update(); // 仅在太阳/地球方向变了之后烘焙一次
   post.render(clock.elapsedTime);
   frames++;
 }
@@ -166,6 +169,7 @@ window.__game = {
   heightAt: moon.heightAt,
   astronaut,
   gui,
+  astroEnv,
   astronautInfo() {
     let robotMeshes = 0;
     const own = new Set(astronaut.parts);

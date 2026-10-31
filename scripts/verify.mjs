@@ -7,7 +7,7 @@ import { checks } from "./checks.mjs";
 
 const step = Number(process.argv[2] ?? 1);
 const PORT = Number(process.env.VERIFY_PORT ?? 5391);
-const URL = `http://localhost:${PORT}/`;
+const URL = `http://127.0.0.1:${PORT}/`;
 
 const server = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "--port", String(PORT), "--strictPort"], {
   stdio: ["ignore", "pipe", "pipe"],
