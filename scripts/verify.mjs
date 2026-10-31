@@ -1,7 +1,7 @@
 // 用法: node scripts/verify.mjs <step>
 // 启动 vite dev server -> Playwright 打开页面 -> 截图 artifacts/step<N>.png -> 检查 console error -> 跑该步断言
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import { checks } from "./checks.mjs";
 
@@ -36,15 +36,28 @@ try {
   await page.waitForFunction(() => window.__game?.ready, null, { timeout: 60000 });
   await page.waitForTimeout(1500);
 
-  for (const c of checks[step] ?? []) {
-    const r = await c.run(page);
-    console.log(`${r.ok ? "PASS" : "FAIL"} ${c.name} ${r.info ?? ""}`);
-    if (!r.ok) code = 1;
+  // 先在出生点截图（画面稳定，便于逐步比对），再跑会移动角色的断言
+  mkdirSync("artifacts", { recursive: true });
+  const shot = `artifacts/step${step}.png`;
+  await page.screenshot({ path: shot });
+  console.log(`screenshot ${shot}`);
+
+  // 回归：跑 1..N 步全部断言
+  for (let s = 1; s <= step; s++) {
+    for (const c of checks[s] ?? []) {
+      const r = await c.run(page);
+      console.log(`${r.ok ? "PASS" : "FAIL"} [step${s}] ${c.name} ${r.info ?? ""}`);
+      if (!r.ok) code = 1;
+    }
   }
 
-  mkdirSync("artifacts", { recursive: true });
-  await page.screenshot({ path: `artifacts/step${step}.png` });
-  console.log(`screenshot artifacts/step${step}.png`);
+  // 截图比对：本步画面不能是空白，并与上一步有可见变化
+  const prev = `artifacts/step${step - 1}.png`;
+  const cmp = await compareImages(page, shot, existsSync(prev) ? prev : null);
+  const okShot = cmp.std > 0.03 && cmp.mean > 0.02;
+  console.log(`${okShot ? "PASS" : "FAIL"} screenshot not blank mean=${cmp.mean.toFixed(3)} std=${cmp.std.toFixed(3)}`);
+  if (!okShot) code = 1;
+  if (cmp.diff !== null) console.log(`INFO diff vs ${prev}: ${(cmp.diff * 100).toFixed(1)}% pixels changed`);
 } catch (e) {
   console.error("FAIL", e.message);
   code = 1;
@@ -60,3 +73,34 @@ if (errors.length) {
   code = 1;
 } else console.log("PASS no console errors");
 process.exit(code);
+
+// 在浏览器里用 canvas 解码 PNG，算亮度均值/标准差，以及与上一张的像素差异比例
+async function compareImages(page, a, b) {
+  const toUrl = (f) => "data:image/png;base64," + readFileSync(f).toString("base64");
+  return page.evaluate(async ([ua, ub]) => {
+    const load = (u) => new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.src = u; });
+    const W = 480, H = 270;
+    const px = async (u) => {
+      const c = new OffscreenCanvas(W, H), g = c.getContext("2d");
+      g.drawImage(await load(u), 0, 0, W, H);
+      return g.getImageData(0, 0, W, H).data;
+    };
+    const A = await px(ua);
+    let sum = 0, sq = 0;
+    const n = W * H;
+    for (let i = 0; i < A.length; i += 4) {
+      const l = (A[i] * 0.2126 + A[i + 1] * 0.7152 + A[i + 2] * 0.0722) / 255;
+      sum += l; sq += l * l;
+    }
+    const mean = sum / n;
+    let diff = null;
+    if (ub) {
+      const B = await px(ub);
+      let c = 0;
+      for (let i = 0; i < A.length; i += 4)
+        if (Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]) > 30) c++;
+      diff = c / n;
+    }
+    return { mean, std: Math.sqrt(Math.max(sq / n - mean * mean, 0)), diff };
+  }, [toUrl(a), b && toUrl(b)]);
+}
