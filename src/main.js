@@ -4,6 +4,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { playerController } from "three-player-controller";
 import { createTerrain } from "./terrain.js";
 import { createSky } from "./sky/index.js";
+import { createPost } from "./post.js";
 
 // 角色高度 = 180 * SCALE（控制器内部按 180 归一化）
 const SCALE = 0.01;
@@ -107,6 +108,9 @@ function setCinematicPitch(deg) {
 // 控制器 init 里用 rAF 设定初始相机，这里排在它之后
 requestAnimationFrame(() => setCinematicPitch(CINE.pitchDeg));
 
+const post = createPost(renderer, scene, camera);
+post.setSize(window.innerWidth, window.innerHeight);
+
 const clock = new THREE.Clock();
 let frames = 0;
 function animate() {
@@ -115,7 +119,7 @@ function animate() {
   if (player.playerModel) followSun(player.playerModel.position);
   earthshine.position.copy(sky.earthDir);
   sky.update(camera, renderer, clock.elapsedTime);
-  renderer.render(scene, camera);
+  post.render(clock.elapsedTime);
   frames++;
 }
 animate();
@@ -124,6 +128,7 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  post.setSize(window.innerWidth, window.innerHeight);
 });
 
 // 供自动化测试读取的只读状态
@@ -143,6 +148,7 @@ window.__game = {
   },
   heightAt: moon.heightAt,
   sky,
+  post,
   // 天体在屏幕上的归一化坐标（0..1，左上为原点），用于断言构图
   project(name) {
     const o = sky.group.getObjectByName(name);

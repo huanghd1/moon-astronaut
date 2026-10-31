@@ -140,4 +140,49 @@ const step4 = [
   },
 ];
 
-export const checks = { 1: step1, 2: step2, 3: step3, 4: step4 };
+// 截屏后在浏览器里取平均亮度：区域 [x0,y0,x1,y1] 为 0..1 归一化坐标
+async function regionLuma(page, box) {
+  const png = (await page.screenshot()).toString("base64");
+  return page.evaluate(async ([u, b]) => {
+    const img = new Image();
+    await new Promise((r) => { img.onload = r; img.src = "data:image/png;base64," + u; });
+    const W = img.width, H = img.height;
+    const c = new OffscreenCanvas(W, H), g = c.getContext("2d");
+    g.drawImage(img, 0, 0);
+    const x0 = Math.floor(b[0] * W), y0 = Math.floor(b[1] * H);
+    const d = g.getImageData(x0, y0, Math.max(1, Math.floor((b[2] - b[0]) * W)), Math.max(1, Math.floor((b[3] - b[1]) * H))).data;
+    let s = 0;
+    for (let i = 0; i < d.length; i += 4) s += d[i] * 0.2126 + d[i + 1] * 0.7152 + d[i + 2] * 0.0722;
+    return s / (d.length / 4) / 255;
+  }, [png, box]);
+}
+
+const step5 = [
+  {
+    name: "post pipeline: render -> bloom -> output -> grade",
+    async run(page) {
+      const p = await page.evaluate(() => window.__game.post.passes);
+      return { ok: p.join(",") === "render,bloom,output,grade", info: p.join(",") };
+    },
+  },
+  {
+    name: "bloom halo around sun + vignette darkens corners",
+    atSpawn: true,
+    async run(page) {
+      const sun = await page.evaluate(() => window.__game.project("sunDisc"));
+      // 日面外的一圈（避开日面本身）
+      const ring = [sun.x + 0.012, sun.y - 0.01, sun.x + 0.03, sun.y + 0.01];
+      const corner = [0, 0.9, 0.06, 1];
+      const on = { halo: await regionLuma(page, ring), corner: await regionLuma(page, corner) };
+      await page.evaluate(() => window.__game.post.set({ enabled: false }));
+      await page.waitForTimeout(200);
+      const off = { halo: await regionLuma(page, ring), corner: await regionLuma(page, corner) };
+      await page.evaluate(() => window.__game.post.set({ enabled: true }));
+      await page.waitForTimeout(200);
+      const ok = on.halo > off.halo * 1.15 && on.corner < off.corner;
+      return { ok, info: JSON.stringify({ on, off }) };
+    },
+  },
+];
+
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5 };
