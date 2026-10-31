@@ -42,13 +42,14 @@ try {
   await page.screenshot({ path: shot });
   console.log(`screenshot ${shot}`);
 
-  // 回归：跑 1..N 步全部断言
-  for (let s = 1; s <= step; s++) {
-    for (const c of checks[s] ?? []) {
-      const r = await c.run(page);
-      console.log(`${r.ok ? "PASS" : "FAIL"} [step${s}] ${c.name} ${r.info ?? ""}`);
-      if (!r.ok) code = 1;
-    }
+  // 回归：跑 1..N 步全部断言；atSpawn 的构图类断言先跑（角色还没被移动过）
+  const all = [];
+  for (let s = 1; s <= step; s++) for (const c of checks[s] ?? []) all.push({ s, c });
+  all.sort((a, b) => Number(!!b.c.atSpawn) - Number(!!a.c.atSpawn));
+  for (const { s, c } of all) {
+    const r = await c.run(page);
+    console.log(`${r.ok ? "PASS" : "FAIL"} [step${s}] ${c.name} ${r.info ?? ""}`);
+    if (!r.ok) code = 1;
   }
 
   // 截图比对：本步画面不能是空白，并与上一步有可见变化

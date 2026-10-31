@@ -3,6 +3,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { playerController } from "three-player-controller";
 import { createTerrain } from "./terrain.js";
+import { createSky } from "./sky/index.js";
 
 // 角色高度 = 180 * SCALE（控制器内部按 180 归一化）
 const SCALE = 0.01;
@@ -39,9 +40,16 @@ const moon = createTerrain();
 const terrain = moon.mesh;
 scene.add(terrain, moon.rocks);
 
-scene.add(new THREE.HemisphereLight(0x8899aa, 0x222222, 0.4));
-const sun = new THREE.DirectionalLight(0xffffff, 3);
-const SUN_DIR = new THREE.Vector3(-0.8, 0.28, -0.45).normalize();
+// 太阳系天空：银河、星点、太阳、地球、行星
+const sky = createSky();
+scene.add(sky.group);
+
+// 月面光照：真空里只有硬朗的太阳直射光 + 很弱的冷色地照/天光补光
+scene.add(new THREE.HemisphereLight(0x6f86b8, 0x1a1a1a, 0.12));
+const earthshine = new THREE.DirectionalLight(0x9db8ff, 0.1);
+scene.add(earthshine);
+const sun = new THREE.DirectionalLight(0xfff2e0, 4.2);
+const SUN_DIR = sky.sunDir;
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
 Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 400 });
@@ -105,6 +113,8 @@ function animate() {
   requestAnimationFrame(animate);
   player.update(Math.min(clock.getDelta(), 0.05));
   if (player.playerModel) followSun(player.playerModel.position);
+  earthshine.position.copy(sky.earthDir);
+  sky.update(camera, renderer, clock.elapsedTime);
   renderer.render(scene, camera);
   frames++;
 }
@@ -132,4 +142,11 @@ window.__game = {
     return { fov: camera.fov, dist: off.length(), pitchDeg: THREE.MathUtils.radToDeg(Math.asin(off.y / off.length())) };
   },
   heightAt: moon.heightAt,
+  sky,
+  // 天体在屏幕上的归一化坐标（0..1，左上为原点），用于断言构图
+  project(name) {
+    const o = sky.group.getObjectByName(name);
+    const v = o.getWorldPosition(new THREE.Vector3()).project(camera);
+    return { x: (v.x + 1) / 2, y: (1 - v.y) / 2, inFront: v.z < 1 };
+  },
 };

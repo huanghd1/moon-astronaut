@@ -93,6 +93,7 @@ const step3 = [
   },
   {
     name: "cinematic wide camera",
+    atSpawn: true,
     async run(page) {
       const c = await page.evaluate(() => window.__game.camera());
       return { ok: c.fov >= 55 && c.dist > 3 && c.pitchDeg < 20, info: `fov ${c.fov} dist ${c.dist.toFixed(2)} pitch ${c.pitchDeg.toFixed(1)}°` };
@@ -100,4 +101,43 @@ const step3 = [
   },
 ];
 
-export const checks = { 1: step1, 2: step2, 3: step3 };
+const step4 = [
+  {
+    name: "solar-system sky objects exist",
+    async run(page) {
+      const names = await page.evaluate(() =>
+        ["milkyWay", "stars", "sunDisc", "earth", "venus", "jupiter", "mars", "saturn"].filter(
+          (n) => !window.__game.sky.group.getObjectByName(n)
+        )
+      );
+      return { ok: names.length === 0, info: names.length ? `missing ${names}` : "all present" };
+    },
+  },
+  {
+    name: "earth and sun framed in default shot",
+    atSpawn: true,
+    async run(page) {
+      const r = await page.evaluate(() => ({ earth: window.__game.project("earth"), sun: window.__game.project("sunDisc") }));
+      const inFrame = (p) => p.inFront && p.x > 0 && p.x < 1 && p.y > 0 && p.y < 0.5;
+      return { ok: inFrame(r.earth) && inFrame(r.sun), info: JSON.stringify(r) };
+    },
+  },
+  {
+    name: "sky is adjustable at runtime",
+    async run(page) {
+      const r = await page.evaluate(() => {
+        const s = window.__game.sky;
+        const before = s.sunDir.clone();
+        const st0 = s.stars.material.uniforms.uIntensity.value;
+        s.set({ sunElevation: 40, starIntensity: 0.3 });
+        const moved = before.angleTo(s.sunDir);
+        const st1 = s.stars.material.uniforms.uIntensity.value;
+        s.set({ sunElevation: 10, starIntensity: st0 });
+        return { moved, st0, st1 };
+      });
+      return { ok: r.moved > 0.4 && r.st1 === 0.3, info: JSON.stringify(r) };
+    },
+  },
+];
+
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4 };
