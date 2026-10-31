@@ -5,6 +5,8 @@ import { playerController } from "three-player-controller";
 import { createTerrain } from "./terrain.js";
 import { createSky } from "./sky/index.js";
 import { createPost } from "./post.js";
+import { buildAstronaut } from "./astronaut.js";
+import { bakeReflectionEnv } from "./envmap.js";
 
 // 角色高度 = 180 * SCALE（控制器内部按 180 归一化）
 const SCALE = 0.01;
@@ -12,7 +14,7 @@ const SCALE = 0.01;
 // 月球手感（游戏化低重力，单位 m、m/s、m/s²）：起跳 3.4m/s、重力 -3.2 → 跳高约 1.8m、滞空约 2.1s
 export const LUNAR = { gravity: -3.2, jumpSpeed: 3.4, walk: 1.5, run: 3.6 };
 // 电影感大广角：35mm 全画幅下约 18mm 镜头（垂直 FOV 62°），镜头略远、看向点偏低让地平线入画
-export const CINE = { fov: 62, minDist: 2.2, maxDist: 6.5, lookAtHeight: 0.85, pitchDeg: 9 };
+export const CINE = { fov: 62, minDist: 2.2, maxDist: 9, lookAtHeight: 0.85, pitchDeg: 9 };
 const toCtrl = (v) => v / SCALE; // 控制器参数以 1/SCALE 为基准单位
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -60,9 +62,19 @@ scene.add(sun, sun.target);
 function followSun(p) {
   sun.target.position.copy(p);
   sun.position.copy(p).addScaledVector(SUN_DIR, 150);
+  rimLight.target.position.copy(p);
+  rimLight.position.copy(p).add(new THREE.Vector3(-SUN_DIR.x, 0.6, -SUN_DIR.z).multiplyScalar(50));
 }
 
+// 冷色轮廓光：从太阳对侧偏上打来，逆光时勾出宇航服边缘（不投影）
+const rimLight = new THREE.DirectionalLight(0x9fc4ff, 0.6);
+scene.add(rimLight, rimLight.target);
+
+// 骨骼与动画来自 CC0 机器人，外形替换为几何体拼的小宇航员
 const gltf = await new GLTFLoader().loadAsync("/models/RobotExpressive.glb");
+const astronaut = buildAstronaut(gltf.scene);
+const astroEnv = bakeReflectionEnv(renderer, SUN_DIR);
+for (const m of Object.values(astronaut.materials)) m.envMap = astroEnv;
 
 const player = new playerController();
 await player.init({
@@ -147,6 +159,25 @@ window.__game = {
     return { fov: camera.fov, dist: off.length(), pitchDeg: THREE.MathUtils.radToDeg(Math.asin(off.y / off.length())) };
   },
   heightAt: moon.heightAt,
+  astronaut,
+  astronautInfo() {
+    let robotMeshes = 0;
+    const own = new Set(astronaut.parts);
+    astronaut.root.traverse((o) => { if (o.isMesh && !own.has(o)) robotMeshes++; });
+    const visor = astronaut.root.getObjectByName("visor");
+    const visorMetal = visor?.material.metalness ?? 0;
+    return { parts: astronaut.parts.length, visor: !!visor, visorMetal, robotMeshes };
+  },
+  astronautScreen() {
+    const b = new THREE.Box3().setFromObject(astronaut.root);
+    const top = b.getCenter(new THREE.Vector3()).setY(b.max.y).project(camera);
+    const bot = b.getCenter(new THREE.Vector3()).setY(b.min.y).project(camera);
+    return { frac: Math.abs(top.y - bot.y) / 2, heightM: b.max.y - b.min.y };
+  },
+  playerHeight() {
+    const b = new THREE.Box3().setFromObject(astronaut.root);
+    return b.max.y - b.min.y;
+  },
   sky,
   post,
   // 天体在屏幕上的归一化坐标（0..1，左上为原点），用于断言构图

@@ -185,4 +185,25 @@ const step5 = [
   },
 ];
 
-export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5 };
+const step6 = [
+  {
+    name: "astronaut replaces robot (visor + parts, no robot meshes)",
+    atSpawn: true,
+    async run(page) {
+      const r = await page.evaluate(() => window.__game.astronautInfo());
+      const ok = r.parts >= 20 && r.visor && r.visorMetal >= 0.9 && r.robotMeshes === 0;
+      return { ok, info: JSON.stringify(r) };
+    },
+  },
+  {
+    name: "astronaut small in wide frame (cosmic scale)",
+    atSpawn: true,
+    async run(page) {
+      const r = await page.evaluate(() => window.__game.astronautScreen());
+      // 画面高度占比 8%~30%：看得清，但人在宇宙里显得渺小
+      const ok = r.frac > 0.08 && r.frac < 0.3 && r.heightM > 1.2 && r.heightM < 2.4;
+      return { ok, info: `screen ${(r.frac * 100).toFixed(1)}% height ${r.heightM.toFixed(2)}m` };
+    },
+  },
+];
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6 };
