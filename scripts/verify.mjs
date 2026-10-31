@@ -41,6 +41,14 @@ try {
   const shot = `artifacts/step${step}.png`;
   await page.screenshot({ path: shot });
   console.log(`screenshot ${shot}`);
+  // 第 7 步起：另存一张展开环境面板的截图
+  if (step >= 7) {
+    await page.evaluate(() => window.__game.gui.open().foldersRecursive().forEach((f) => f.open()));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `artifacts/step${step}-panel.png` });
+    console.log(`screenshot artifacts/step${step}-panel.png`);
+    await page.evaluate(() => window.__game.gui.close());
+  }
 
   // 回归：跑 1..N 步全部断言；atSpawn 的构图类断言先跑（角色还没被移动过）
   const all = [];

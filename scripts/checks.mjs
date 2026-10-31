@@ -206,4 +206,56 @@ const step6 = [
     },
   },
 ];
-export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6 };
+// 通过 lil-gui 控件 setValue（与用户拖滑块走同一条 onChange 路径）
+const guiSet = (page, prop, v) =>
+  page.evaluate(([p, val]) => {
+    const c = window.__game.gui.controllersRecursive().find((c) => c.property === p);
+    c.setValue(val);
+  }, [prop, v]);
+const GUI_PROPS = ["sunAzimuth", "sunElevation", "earthSizeDeg", "starIntensity", "milkyWay",
+  "exposure", "bloomStrength", "vignette", "grain", "roughness", "bump", "tint"];
+const step7 = [
+  {
+    name: "lil-gui panel exposes environment params",
+    async run(page) {
+      const have = await page.evaluate(() =>
+        window.__game.gui.controllersRecursive().map((c) => c.property));
+      const missing = GUI_PROPS.filter((p) => !have.includes(p));
+      const info = missing.length ? "missing " + missing.join(",") : have.length + " controls";
+      return { ok: missing.length === 0, info };
+    },
+  },
+  {
+    name: "GUI exposure change updates frame live",
+    async run(page) {
+      const full = [0, 0, 1, 1];
+      const before = await regionLuma(page, full);
+      await guiSet(page, "exposure", 2.2);
+      await page.waitForTimeout(300);
+      const after = await regionLuma(page, full);
+      await guiSet(page, "exposure", 1.05);
+      const ok = after > before * 1.25;
+      return { ok, info: `luma ${before.toFixed(3)} -> ${after.toFixed(3)}` };
+    },
+  },
+  {
+    name: "GUI sun/earth/roughness drive scene live",
+    async run(page) {
+      const g = () => page.evaluate(() => ({
+        sun: window.__game.sky.sunDir.toArray(), es: window.__game.sky.earth.scale.x,
+        r: window.__game.terrainMaterial.roughness,
+      }));
+      const a = await g();
+      await guiSet(page, "sunAzimuth", -60);
+      await guiSet(page, "earthSizeDeg", 8);
+      await guiSet(page, "roughness", 0.4);
+      const b = await g();
+      // 恢复电影感默认，避免影响之后的截图
+      await page.evaluate(() => window.__game.gui.reset());
+      const sunMoved = Math.hypot(...a.sun.map((v, i) => v - b.sun[i])) > 0.5;
+      const ok = sunMoved && b.es > a.es * 2 && Math.abs(b.r - 0.4) < 1e-6;
+      return { ok, info: `sunMoved ${sunMoved} earth x${(b.es / a.es).toFixed(2)} rough ${b.r}` };
+    },
+  },
+];
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7 };

@@ -7,6 +7,7 @@ import { createSky } from "./sky/index.js";
 import { createPost } from "./post.js";
 import { buildAstronaut } from "./astronaut.js";
 import { bakeReflectionEnv } from "./envmap.js";
+import { createGui } from "./gui.js";
 
 // 角色高度 = 180 * SCALE（控制器内部按 180 归一化）
 const SCALE = 0.01;
@@ -123,6 +124,9 @@ requestAnimationFrame(() => setCinematicPitch(CINE.pitchDeg));
 const post = createPost(renderer, scene, camera);
 post.setSize(window.innerWidth, window.innerHeight);
 
+// 环境面板（右上角，可折叠）
+const gui = createGui({ sky, post, terrain, sunLight: sun, renderer });
+
 const clock = new THREE.Clock();
 let frames = 0;
 function animate() {
@@ -153,6 +157,7 @@ window.__game = {
   },
   get onGround() { return player.playerIsOnGround; },
   terrainStats: moon.stats,
+  terrainMaterial: terrain.material,
   physics: () => ({ gravity: player.gravity, jump: player.jumpHeight, walk: player.playerSpeed, run: player.playerRunSpeed }),
   camera: () => {
     const off = camera.position.clone().sub(controls.target);
@@ -160,6 +165,7 @@ window.__game = {
   },
   heightAt: moon.heightAt,
   astronaut,
+  gui,
   astronautInfo() {
     let robotMeshes = 0;
     const own = new Set(astronaut.parts);
