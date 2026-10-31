@@ -1,0 +1,2 @@
+RobotExpressive.glb — by Tomás Laulhé (Quaternius), CC0 1.0; modifications by Don McCurdy.
+Source: three.js r170 examples/models/gltf/RobotExpressive (placeholder character, to be replaced by astronaut).

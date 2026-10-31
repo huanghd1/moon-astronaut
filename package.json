@@ -1,0 +1,21 @@
+{
+  "name": "moon-astronaut",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5391 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "verify": "node scripts/verify.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0",
+    "three-mesh-bvh": "0.9.17",
+    "three-player-controller": "0.6.3"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1",
+    "vite": "8.3.5"
+  }
+}
