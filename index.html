@@ -8,17 +8,6 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
       canvas { display: block; }
-      /* 雷达：右上区域，放在太阳下方，不挡电影构图；窄屏时自动缩小 */
-      #minimap {
-        position: fixed;
-        right: clamp(12px, 2vw, 32px);
-        top: clamp(64px, 24vh, 300px);
-        width: clamp(120px, 11vw, 200px);
-        height: clamp(120px, 11vw, 200px);
-        border-radius: 50%;
-        pointer-events: none;
-        box-shadow: 0 0 24px rgba(0, 0, 0, 0.55);
-      }
     </style>
   </head>
   <body>

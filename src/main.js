@@ -9,7 +9,8 @@ import { buildAstronaut } from "./astronaut.js";
 import { createReflectionEnv } from "./envmap.js";
 import { createGui } from "./gui.js";
 import { createCompanion } from "./companion.js";
-import { createMinimap } from "./minimap.js";
+import { createSlab } from "./slab.js";
+import { TERRAIN } from "./terrain.js";
 
 // 角色高度 = 180 * SCALE（控制器内部按 180 归一化）
 const SCALE = 0.01;
@@ -45,6 +46,9 @@ renderer.domElement.addEventListener(
 const moon = createTerrain();
 const terrain = moon.mesh;
 scene.add(terrain, moon.rocks);
+// 地层实体：5m 岩石侧壁 + 底面；四周隐形墙 + 托底平面（地形尺寸不变）
+const slab = createSlab(terrain, TERRAIN.half, TERRAIN.segments);
+scene.add(slab.group);
 
 // 太阳系天空：银河、星点、太阳、地球、行星
 const sky = createSky();
@@ -86,18 +90,6 @@ const buddyGltf = await new GLTFLoader().loadAsync("/models/RobotExpressive.glb"
 const buddy = createCompanion(buddyGltf, moon.heightAt);
 scene.add(buddy.root);
 
-// 圆形雷达小地图（Canvas 2D）
-const minimap = createMinimap(moon.craters);
-const mmPos = new THREE.Vector3(), mmFwd = new THREE.Vector3(), mmQ = new THREE.Quaternion();
-const mmState = { x: 0, z: 0, fx: 0, fz: 1 };
-function updateMinimap() {
-  const m = player.playerModel;
-  m.getWorldPosition(mmPos);
-  mmFwd.set(0, 0, 1).applyQuaternion(m.getWorldQuaternion(mmQ)).setY(0).normalize();
-  Object.assign(mmState, { x: mmPos.x, z: mmPos.z, fx: mmFwd.x, fz: mmFwd.z });
-  minimap.draw(mmState, buddy.root.position);
-}
-
 const player = new playerController();
 await player.init({
   scene,
@@ -127,7 +119,12 @@ await player.init({
   followPlayerDirection: true,
   playerDirectionFollowSpeed: 1.2,
   initPos: new THREE.Vector3(0, moon.heightAt(0, 0) + 2, 0),
-  colliders: [{ motion: "static", shape: { kind: "mesh", source: terrain } }],
+  colliders: [
+    { motion: "static", shape: { kind: "mesh", source: terrain } },
+    // 不可见的 Box 网格作为边界墙 / 托底碰撞体（控制器按网格收集，与可见性无关）
+    { motion: "static", shape: { kind: "mesh", source: slab.walls } },
+    { motion: "static", shape: { kind: "mesh", source: slab.floor } },
+  ],
 });
 
 // 低机位：控制器默认俯角约 27°，改成贴地仰望感，让地平线和天空进入画面上 1/3
@@ -157,7 +154,6 @@ function animate() {
   if (player.playerModel) {
     followSun(player.playerModel.position);
     buddy.update(dt, player.playerModel);
-    updateMinimap();
   }
   earthshine.position.copy(sky.earthDir);
   sky.update(camera, renderer, clock.elapsedTime);
@@ -191,12 +187,20 @@ window.__game = {
     return { fov: camera.fov, dist: off.length(), pitchDeg: THREE.MathUtils.radToDeg(Math.asin(off.y / off.length())) };
   },
   heightAt: moon.heightAt,
+  slab: slab.info,
+  // 测试用：把玩家瞬移到指定位置（用于验证边界墙、托底）
+  teleport(x, y, z) { player.reset(new THREE.Vector3(x, y, z)); },
+  // 测试用：交出相机控制权，从地图外取景（截地层侧面）
+  freeCamera(from, to) {
+    player.setManageCamera(false);
+    camera.position.set(...from);
+    controls.target.set(...to);
+    camera.lookAt(controls.target);
+  },
   astronaut,
   gui,
   astroEnv,
   buddy,
-  minimap,
-  minimapState: () => ({ ...mmState }),
   // 读真实几何参数（以头部高度 H 归一化），验证"身体加粗、头不动"
   bodyMetrics() {
     const H = astronaut.H, onBone = (re) => astronaut.parts.filter((m) => re.test(m.parent.name));

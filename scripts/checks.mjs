@@ -278,48 +278,6 @@ step7.push({
 });
 const step8 = [];
 step8.push({
-  name: "minimap: round 2D canvas, upper-right, not covering sun",
-  atSpawn: true,
-  async run(page) {
-    const r = await page.evaluate(() => {
-      const c = document.getElementById("minimap");
-      if (!c) return null;
-      const b = c.getBoundingClientRect(), s = getComputedStyle(c);
-      const sun = window.__game.project("sunDisc");
-      const sx = sun.x * innerWidth, sy = sun.y * innerHeight;
-      // 太阳与雷达外接矩形的最小距离（含 40px 光晕余量）
-      const gap = Math.hypot(Math.max(b.left - sx, 0, sx - b.right), Math.max(b.top - sy, 0, sy - b.bottom));
-      return {
-        w: b.width, h: b.height, right: innerWidth - b.right, top: b.top,
-        round: s.borderRadius === "50%", ctx2d: !!c.getContext("2d"), gap,
-      };
-    });
-    if (!r) return { ok: false, info: "no #minimap" };
-    const ok = r.round && r.ctx2d && r.w >= 120 && Math.abs(r.w - r.h) < 1 &&
-      r.right < 60 && r.top < 1080 * 0.45 && r.gap > 40;
-    return { ok, info: JSON.stringify({ ...r, gap: Math.round(r.gap) }) };
-  },
-});
-step8.push({
-  name: "minimap tracks WASD movement and heading",
-  async run(page) {
-    const mm = () => page.evaluate(() => window.__game.minimapState());
-    const a = await mm();
-    await holdKey(page, "KeyW", 1200);
-    const b = await mm();
-    // 玩家正前方 10m 的点必须画在雷达中心正上方（航向朝上）
-    const ahead = await page.evaluate((s) => window.__game.minimap.toRadar(s, s.x + s.fx * 10, s.z + s.fz * 10), b);
-    await holdKey(page, "KeyD", 1200);
-    const c = await mm();
-    const moved = Math.hypot(b.x - a.x, b.z - a.z);
-    const turnDeg = (Math.acos(Math.min(1, Math.max(-1, b.fx * c.fx + b.fz * c.fz))) * 180) / Math.PI;
-    const R = 100; // 雷达半径（CSS 200px / 2）
-    const upOk = Math.abs(ahead[0] - R) < 1 && ahead[1] < R - 5;
-    const ok = moved > 1 && turnDeg > 20 && upOk;
-    return { ok, info: `moved ${moved.toFixed(2)}m turn ${turnDeg.toFixed(0)}° ahead→(${ahead.map((v) => v.toFixed(0))})` };
-  },
-});
-step8.push({
   name: "robot buddy follows ~2m behind-right, grounded, smooth",
   async run(page) {
     const info = () => page.evaluate(() => window.__game.buddyInfo());
@@ -351,4 +309,100 @@ step8.push({
     return { ok: headOk && bulkOk, info: JSON.stringify(r) };
   },
 });
-export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8 };
+const step9 = [];
+step9.push({
+  name: "moon slab: 5m dark rock skirt + bottom, terrain size unchanged",
+  atSpawn: true,
+  async run(page) {
+    const r = await page.evaluate(() => {
+      const g = window.__game, sc = g.astronaut.root.parent;
+      let root = sc; while (root.parent) root = root.parent;
+      const skirt = root.getObjectByName("slabSkirt"), bottom = root.getObjectByName("slabBottom");
+      const t = root.getObjectByName("moonTerrain");
+      t.geometry.computeBoundingBox();
+      const tb = t.geometry.boundingBox;
+      skirt.geometry.computeBoundingBox();
+      const sb = skirt.geometry.boundingBox;
+      const c = skirt.material.color;
+      return {
+        terrainW: tb.max.x - tb.min.x, skirtW: sb.max.x - sb.min.x, depth: tb.min.y - sb.min.y,
+        luma: 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b, bottom: !!bottom, thickness: g.slab.thickness,
+      };
+    });
+    const ok = Math.abs(r.terrainW - 2000) < 1 && Math.abs(r.skirtW - r.terrainW) < 0.01 &&
+      Math.abs(r.depth - 5) < 0.01 && r.thickness === 5 && r.bottom && r.luma < 0.1;
+    return { ok, info: JSON.stringify(r) };
+  },
+});
+// 在页面里逐帧记录玩家 |x|、|z| 的最大值
+const trackMax = (page) => page.evaluate(() => {
+  const g = window.__game;
+  window.__maxXZ = { x: 0, z: 0 };
+  const tick = () => {
+    const m = window.__maxXZ;
+    if (!m) return; // 读数后置空即停止
+    const p = g.playerPos();
+    m.x = Math.max(m.x, Math.abs(p.x));
+    m.z = Math.max(m.z, Math.abs(p.z));
+    requestAnimationFrame(tick);
+  };
+  tick();
+});
+step9.push({
+  name: "invisible edge walls stop the player at the map border",
+  async run(page) {
+    const half = await page.evaluate(() => {
+      const g = window.__game, h = g.slab.half, x = h - 2, z = h - 2;
+      g.teleport(x, g.heightAt(x, z) + 1, z);
+      return h;
+    });
+    await page.waitForTimeout(1500);
+    await trackMax(page);
+    // 角落出发，四个方向各跑一段：总有两个方向直接顶到墙上
+    for (const k of ["KeyW", "KeyA", "KeyS", "KeyD"]) {
+      await page.mouse.click(960, 540);
+      await page.keyboard.down("ShiftLeft");
+      await page.keyboard.down(k);
+      await page.waitForTimeout(2200);
+      await page.keyboard.up(k);
+      await page.keyboard.up("ShiftLeft");
+    }
+    await page.waitForTimeout(800);
+    const r = await page.evaluate(() => {
+      const g = window.__game, p = g.playerPos(), m = window.__maxXZ;
+      window.__maxXZ = null;
+      return { maxX: m.x, maxZ: m.z, gap: p.y - g.heightAt(p.x, p.z), onGround: g.onGround };
+    });
+    const ok = r.maxX <= half && r.maxZ <= half && Math.max(r.maxX, r.maxZ) > half - 1 && Math.abs(r.gap) < 0.8;
+    return { ok, info: JSON.stringify({ half, ...r, maxX: +r.maxX.toFixed(2), maxZ: +r.maxZ.toFixed(2), gap: +r.gap.toFixed(2) }) };
+  },
+});
+step9.push({
+  name: "invisible floor catches a player below the slab",
+  async run(page) {
+    const r0 = await page.evaluate(() => {
+      const g = window.__game, x = g.slab.half - 20, z = g.slab.half - 20;
+      g.teleport(x, g.heightAt(x, z) - 5, z);
+      return { floorY: g.slab.floorY };
+    });
+    await page.waitForTimeout(6000);
+    const a = await pos(page);
+    await page.waitForTimeout(500);
+    const b = await pos(page);
+    const ok = a.y > r0.floorY - 1 && a.y < r0.floorY + 3 && Math.abs(b.y - a.y) < 0.02;
+    return { ok, info: `floorY ${r0.floorY.toFixed(2)} y ${a.y.toFixed(2)} -> ${b.y.toFixed(2)}` };
+  },
+});
+step9.push({
+  name: "astronaut back at spawn stands on surface (not underground)",
+  async run(page) {
+    await page.evaluate(() => { const g = window.__game; g.teleport(0, g.heightAt(0, 0) + 2, 0); });
+    await page.waitForTimeout(2500);
+    const s = await page.evaluate(() => {
+      const g = window.__game, p = g.playerPos();
+      return { on: g.onGround, dy: p.y - g.heightAt(p.x, p.z) };
+    });
+    return { ok: s.on === true && Math.abs(s.dy) < 0.6, info: JSON.stringify(s) };
+  },
+});
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8, 9: step9 };

@@ -60,6 +60,22 @@ try {
     if (!r.ok) code = 1;
   }
 
+  // 第 9 步起：断言跑完后从地图角落外侧取景，另存一张地层侧壁截图
+  if (step >= 9) {
+    await page.evaluate(() => {
+      const g = window.__game, h = g.slab.half, x = h - 4, z = h - 6;
+      g.teleport(x, g.heightAt(x, z) + 1, z);
+    });
+    await page.waitForTimeout(2500);
+    await page.evaluate(() => {
+      const g = window.__game, h = g.slab.half, y = g.heightAt(h - 4, h - 6);
+      g.freeCamera([h + 14, y + 4, h + 10], [h - 3, y - 1.5, h - 4]);
+    });
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `artifacts/step${step}-edge.png` });
+    console.log(`screenshot artifacts/step${step}-edge.png`);
+  }
+
   // 截图比对：本步画面不能是空白，并与上一步有可见变化
   const prev = `artifacts/step${step - 1}.png`;
   const cmp = await compareImages(page, shot, existsSync(prev) ? prev : null);
