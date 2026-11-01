@@ -153,7 +153,11 @@ let frames = 0;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
+  astronaut.legs.restore(); // 先撤销上一帧的直腿修正，让混合器拿到干净的骨骼
   player.update(dt);
+  // 待机直腿：按 Idle 动作的有效权重混合（走/跑时权重为 0，保留原本的屈膝）
+  const idle = player.animation?.actions?.get("idle");
+  astronaut.legs.apply(idle && idle.isRunning() ? idle.getEffectiveWeight() : 0);
   if (player.playerModel) {
     followSun(player.playerModel.position);
     buddy.update(dt, player.playerModel);

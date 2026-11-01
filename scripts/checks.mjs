@@ -574,4 +574,43 @@ step11.push({
     return { ok, info: JSON.stringify(r) };
   },
 });
-export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8, 9: step9, 10: step10, 11: step11 };
+// 第 12 步：GUI 参数存档（localStorage）
+const step12 = [];
+// 找到 lil-gui 按钮（按显示名）并像用户一样点它
+const clickGuiButton = (page, label) => page.evaluate((l) => {
+  const c = window.__game.gui.controllersRecursive().find((x) => x._name === l);
+  c.$button.click();
+}, label);
+const waitReady = (page) => page.waitForFunction(() => window.__game?.ready, null, { timeout: 60000 });
+// 读当前曝光：面板里的值和渲染器真正用的值都要对上
+const exposureNow = (page) => page.evaluate(() => ({
+  gui: window.__game.post.settings.exposure,
+  renderer: window.__game.post.composer.renderer.toneMappingExposure,
+  loaded: window.__game.gui.persist.loaded,
+}));
+step12.push({
+  name: "GUI settings persist: change exposure, click save, reload page, value restored from localStorage",
+  async run(page) {
+    const before = await exposureNow(page);
+    await guiSet(page, "exposure", 1.73);
+    await clickGuiButton(page, "💾 保存当前环境配置");
+    const stored = await page.evaluate(() => {
+      const raw = localStorage.getItem(window.__game.gui.persist.key);
+      return raw ? JSON.parse(raw).folders["镜头 Post"].controllers["曝光度"] : null;
+    });
+    // 刷新整页：所有 JS 状态重建，只有 localStorage 留下来
+    await page.reload();
+    await waitReady(page);
+    const after = await exposureNow(page);
+    // 再点“恢复默认（清除存档）”：应清掉存档并自动刷新，回到默认值
+    await Promise.all([page.waitForEvent("load"), clickGuiButton(page, "🗑️ 恢复默认（清除存档）")]);
+    await waitReady(page);
+    const cleared = await exposureNow(page);
+    const left = await page.evaluate(() => localStorage.getItem(window.__game.gui.persist.key));
+    const near = (a, b) => Math.abs(a - b) < 1e-6;
+    const ok = near(stored, 1.73) && after.loaded && near(after.gui, 1.73) && near(after.renderer, 1.73)
+      && left === null && !cleared.loaded && near(cleared.gui, before.gui) && near(cleared.renderer, before.renderer);
+    return { ok, info: `default ${before.gui} -> saved ${stored} -> after reload ${JSON.stringify(after)} -> cleared ${JSON.stringify(cleared)} store=${left}` };
+  },
+});
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8, 9: step9, 10: step10, 11: step11, 12: step12 };

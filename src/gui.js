@@ -1,5 +1,8 @@
 import GUI from "lil-gui";
 
+// 环境配置存档在 localStorage 里的键名（带版本号，参数结构大改时换个键即可让旧存档失效）
+export const GUI_STORAGE_KEY = "moon-astronaut.gui.v1";
+
 // 环境面板：每个控件 onChange 直接改 uniform / 材质 / 灯光，画面实时变化
 export function createGui({ sky, post, terrain, sunLight, earthshine, renderer, onSkyChange = () => {} }) {
   const gui = new GUI({ title: "环境 Environment" });
@@ -40,7 +43,28 @@ export function createGui({ sky, post, terrain, sunLight, earthshine, renderer, 
   fSurf.add(surf, "roughness", 0, 1, 0.01).name("月面粗糙度").onChange((v) => (tm.roughness = v));
   fSurf.add(surf, "bump", 0, 3, 0.01).name("表面颗粒凹凸").onChange((v) => tm.normalScale.set(v, v));
   fSurf.addColor(surf, "tint").name("月面色调").onChange((v) => tm.color.set(v));
-  // 一键恢复电影感默认值
-  gui.add({ reset: () => { gui.reset(); applySky(); applyPost(); } }, "reset").name("恢复默认");
+  // 存档：lil-gui 自带 save()/load()，按“文件夹标题/控件名”序列化全部参数（按钮不参与）
+  const persist = {
+    key: GUI_STORAGE_KEY,
+    loaded: false, // 本次启动是否读到了存档（供测试）
+    save() {
+      try { localStorage.setItem(GUI_STORAGE_KEY, JSON.stringify(gui.save())); }
+      catch (e) { console.warn("保存环境配置失败：", e); }
+    },
+    // 清除存档并刷新：页面重新以默认值启动
+    clear() {
+      try { localStorage.removeItem(GUI_STORAGE_KEY); } catch {}
+      location.reload();
+    },
+  };
+  // 启动时自动加载：控件 load 会走 onChange，场景随之更新；没有存档或存档损坏就保持默认值
+  try {
+    const raw = localStorage.getItem(GUI_STORAGE_KEY);
+    if (raw) { gui.load(JSON.parse(raw)); persist.loaded = true; }
+  } catch (e) { console.warn("环境配置存档无法读取，使用默认值：", e); }
+  // 面板最下方两个按钮
+  gui.add(persist, "save").name("💾 保存当前环境配置");
+  gui.add(persist, "clear").name("🗑️ 恢复默认（清除存档）");
+  gui.persist = persist;
   return gui;
 }

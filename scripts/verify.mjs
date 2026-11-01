@@ -75,6 +75,24 @@ try {
     if (!r.ok) code = 1;
   }
 
+  // 第 12 步起：从宇航员正侧面平视取景，看待机站姿（腿是否伸直）
+  if (step >= 12) {
+    await page.evaluate(() => window.__game.gui.close());
+    await page.waitForTimeout(1500); // 回到待机，Idle 淡入完成
+    await page.evaluate(() => {
+      const g = window.__game, q = g.playerPos(), m = g.astronaut.root.matrixWorld.elements;
+      // 模型局部 +Z 是正前方；侧面 = 水平面内与朝向垂直的方向
+      const h = Math.hypot(m[8], m[10]), sx = m[10] / h, sz = -m[8] / h;
+      const cx = q.x + sx * 4.5, cz = q.z + sz * 4.5;
+      // 侧面地势可能比脚下高：镜头至少离那里的地面 1.2m，免得钻到地形下面
+      const cy = Math.max(q.y + 1, g.heightAt(cx, cz) + 1.2);
+      g.freeCamera([cx, cy, cz], [q.x, q.y + 0.9, q.z]);
+    });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `artifacts/step${step}-legs.png` });
+    console.log(`screenshot artifacts/step${step}-legs.png`);
+  }
+
   // 第 11 步起：站在宇航员和地球之间回头看（背光面），地照开/关各存一张
   if (step >= 11) {
     await page.evaluate(() => {

@@ -145,5 +145,88 @@ export function buildAstronaut(root) {
   band.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), elL.clone().sub(shL).normalize());
   place("UpperArm.L", band, shL.clone().lerp(elL, 0.45));
   root.name = "astronaut";
-  return { root, materials: mats, parts, H };
+  const legs = createLegStraightener(root, bone, wp, H);
+  return { root, materials: mats, parts, H, legs };
 }
+
+// 待机直腿：RobotExpressive 的静止姿态和 Idle 片段都是半蹲（膝盖弯 33–41°）。
+// 每帧在动画混合之后做一次两骨 IK：骨盆抬高一点，让大腿+小腿几乎伸直地落在 IK 脚骨上，
+// 按 Idle 的权重混合，所以走/跑的自然屈膝不受影响。
+export const LEGS = { targetBendDeg: 6 }; // 留一点点微屈，完全锁死的膝盖看起来僵
+function createLegStraightener(root, bone, wp, H) {
+  const body = bone("Body");
+  // 每条腿：髋骨、膝骨、IK 脚骨；脚踝点在小腿骨局部空间里的位置（静止姿态时就是脚骨位置）
+  const sides = ["L", "R"].map((s) => {
+    const hip = bone("UpperLeg." + s), knee = bone("LowerLeg." + s), foot = bone("Foot." + s);
+    const ankleLocal = knee.worldToLocal(wp("Foot." + s));
+    return { hip, knee, foot, ankleLocal, saved: [new THREE.Quaternion(), new THREE.Quaternion()] };
+  });
+  const savedBody = new THREE.Vector3();
+  const _h = new THREE.Vector3(), _k = new THREE.Vector3(), _a = new THREE.Vector3(), _t = new THREE.Vector3();
+  const _q = new THREE.Quaternion(), _pq = new THREE.Quaternion(), _bq = new THREE.Quaternion();
+  let modified = false;
+  // 世界空间旋转 r 作用到骨骼上：local' = parentWorld⁻¹ · r · world
+  const rotateWorld = (b, r) => {
+    b.getWorldQuaternion(_bq);
+    b.parent.getWorldQuaternion(_pq).invert();
+    b.quaternion.copy(_pq.multiply(r).multiply(_bq));
+    b.updateMatrixWorld(true);
+  };
+  // 两骨解析 IK：先把膝盖内角改到能刚好够到 t 的值，再转大腿让踝点落回 t
+  function solveLeg(L, t) {
+    L.hip.getWorldPosition(_h); L.knee.getWorldPosition(_k);
+    _a.copy(L.ankleLocal); L.knee.localToWorld(_a);
+    const l1 = _h.distanceTo(_k), l2 = _k.distanceTo(_a), d = _h.distanceTo(t);
+    const want = Math.acos(THREE.MathUtils.clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1));
+    const v1 = _h.clone().sub(_k), v2 = _a.clone().sub(_k);
+    const now = v1.angleTo(v2);
+    const n = v1.clone().cross(v2);
+    if (n.lengthSq() < 1e-12) return; // 已经完全伸直，弯曲平面无定义
+    // 绕弯曲平面法线转小腿：内角从 now 变到 want
+    // 绕 v1×v2 正向转会让 v2 远离 v1（内角变大），所以转 want - now
+    _q.setFromAxisAngle(n.normalize(), want - now);
+    rotateWorld(L.knee, _q);
+    // 再转大腿：髋→踝 对齐到 髋→目标
+    _a.copy(L.ankleLocal); L.knee.localToWorld(_a);
+    _q.setFromUnitVectors(_a.sub(_h).normalize(), _t.copy(t).sub(_h).normalize());
+    rotateWorld(L.hip, _q);
+  }
+  // 动画片段不一定每帧都写这些骨骼（例如没有对应轨道时），所以先还原上一帧改过的值，再交给混合器
+  function restore() {
+    if (!modified) return;
+    body.position.copy(savedBody);
+    for (const L of sides) { L.hip.quaternion.copy(L.saved[0]); L.knee.quaternion.copy(L.saved[1]); }
+    modified = false;
+  }
+  // w = Idle 动作的有效权重（0..1）：走/跑时为 0，原样保留动画的屈膝
+  function apply(w) {
+    if (w < 0.01) return;
+    savedBody.copy(body.position);
+    for (const L of sides) { L.saved[0].copy(L.hip.quaternion); L.saved[1].copy(L.knee.quaternion); }
+    modified = true;
+    root.updateMatrixWorld(true);
+    // 每条腿：目标微屈角下髋到踝的长度 D；骨盆竖直抬高 lift 后髋到脚骨正好是 D
+    const bend = THREE.MathUtils.degToRad(LEGS.targetBendDeg);
+    let lift = Infinity;
+    for (const L of sides) {
+      L.hip.getWorldPosition(_h); L.knee.getWorldPosition(_k); L.foot.getWorldPosition(_t);
+      _a.copy(L.ankleLocal); L.knee.localToWorld(_a);
+      const l1 = _h.distanceTo(_k), l2 = _k.distanceTo(_a);
+      const D = Math.sqrt(l1 * l1 + l2 * l2 + 2 * l1 * l2 * Math.cos(bend)); // 内角 = π - bend
+      const dx = _h.x - _t.x, dz = _h.z - _t.z;
+      const need = Math.sqrt(Math.max(D * D - dx * dx - dz * dz, 0)) - (_h.y - _t.y);
+      lift = Math.min(lift, need); // 取两条腿里较小的，保证哪条都不会被拉过头
+    }
+    // 骨盆抬高按权重混合；IK 每次都精确落到脚骨，所以过渡期间脚不打滑
+    lift = Math.max(lift, 0) * w;
+    if (lift > 1e-5) {
+      body.getWorldPosition(_t).y += lift;
+      body.position.copy(body.parent.worldToLocal(_t));
+      body.updateMatrixWorld(true);
+    }
+    for (const L of sides) solveLeg(L, L.foot.getWorldPosition(new THREE.Vector3()));
+  }
+  return { restore, apply, settings: LEGS };
+}
+
+
