@@ -106,6 +106,9 @@ await player.init({
     walkAnim: "Walking",
     runAnim: "Running",
     jumpAnim: "Jump",
+    // 第一人称：相机挂到头骨上，偏移 = 头盔里眼睛的位置（头骨局部坐标，见 astronaut.eye）
+    headBoneName: astronaut.headBone.name,
+    firstPersonCameraOffset: astronaut.eye.toArray(),
     gravity: toCtrl(LUNAR.gravity),
     jumpHeight: toCtrl(LUNAR.jumpSpeed),
     speed: toCtrl(LUNAR.walk),
@@ -121,6 +124,8 @@ await player.init({
   springCameraTime: 0.18,
   followPlayerDirection: true,
   playerDirectionFollowSpeed: 1.2,
+  // Z 键切换第一/第三人称（按 event.code 匹配，大小写 z/Z 都是 KeyZ）；其余按键保持默认
+  keyMap: { toggleView: ["KeyZ"] },
   initPos: new THREE.Vector3(0, moon.heightAt(0, 0) + 2, 0),
   colliders: [
     { motion: "static", shape: { kind: "mesh", source: terrain } },
@@ -142,6 +147,19 @@ function setCinematicPitch(deg) {
 // 控制器 init 里用 rAF 设定初始相机，这里排在它之后
 requestAnimationFrame(() => setCinematicPitch(CINE.pitchDeg));
 
+// 第一/第三人称切换（Z 键，由控制器的 toggleView 动作触发）。
+// 第一人称：显示 CSS 面罩遮罩；把挂在头骨上的部件（头盔壳、面罩、边框）藏起来，免得从里面看到它们的背面。
+// 颈环、胸甲、手臂、腿留着，低头能看到自己的宇航服。
+const helmetOverlay = document.getElementById("helmet");
+const headParts = astronaut.parts.filter((m) => m.parent === astronaut.headBone);
+function applyView(firstPerson) {
+  helmetOverlay.classList.toggle("on", firstPerson);
+  for (const m of headParts) m.visible = !firstPerson;
+  // 眼睛离颈环/胸甲只有十几厘米：第一人称把近裁剪面拉近，免得低头时自己的宇航服被切掉
+  camera.near = firstPerson ? 0.02 : 0.05;
+  camera.updateProjectionMatrix();
+}
+player.onViewChange = applyView;
 const post = createPost(renderer, scene, camera);
 post.setSize(window.innerWidth, window.innerHeight);
 
@@ -200,12 +218,21 @@ window.__game = {
   // 测试用：交出相机控制权，从地图外取景（截地层侧面）
   freeCamera(from, to) {
     player.setManageCamera(false);
+    if (camera.parent !== scene) scene.attach(camera); // 第一人称时相机挂在头骨上，先摘回场景
     camera.position.set(...from);
     controls.target.set(...to);
     camera.lookAt(controls.target);
   },
   astronaut,
   lights: { sun, earthshine },
+  // 测试用：当前视角与相机世界坐标/朝向
+  view() {
+    const p = camera.getWorldPosition(new THREE.Vector3()), d = camera.getWorldDirection(new THREE.Vector3());
+    return { firstPerson: player.isFirstPerson, cam: p.toArray(), dir: d.toArray(), near: camera.near };
+  },
+  // 测试用：模拟鼠标移动（与指针锁定下的 mousemove 走同一个 setToward）
+  look(dx, dy) { player.cam.setToward(dx, dy, 1e-4); },
+  helmetOn: () => helmetOverlay.classList.contains("on"),
   gui,
   astroEnv,
   buddy,

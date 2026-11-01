@@ -73,7 +73,8 @@ export function createSky(params = {}) {
       apply();
     },
     update(camera, renderer, t) {
-      group.position.copy(camera.position); // 天空无限远：始终以相机为中心
+      // 天空无限远：始终以相机为中心。第一人称时相机挂在头骨下，position 是局部坐标，必须取世界坐标
+      camera.getWorldPosition(group.position);
       stars.material.uniforms.uPixelRatio.value = renderer.getPixelRatio();
       // 地球的光照方向换算到地球局部坐标
       earth.rotation.y = t * 0.01;

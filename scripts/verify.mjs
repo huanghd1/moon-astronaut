@@ -75,6 +75,36 @@ try {
     if (!r.ok) code = 1;
   }
 
+  // 第 13 步起：第三人称一张；按 Z 进第一人称（带头盔面罩）一张；转头看跟班机器人一张；再按 Z 切回。
+  // 必须排在 freeCamera 之前（freeCamera 会关掉控制器的相机管理，Z 就不起作用了）
+  if (step >= 13) {
+    await page.evaluate(() => window.__game.gui.close());
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: `artifacts/step${step}-tps.png` });
+    await page.mouse.click(960, 540);
+    await page.keyboard.press("KeyZ");
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `artifacts/step${step}-fps.png` });
+    // 转头看跟班：小步转动，直到视线水平方向对准机器人（与指针锁定下 mousemove 同一路径）
+    await page.evaluate(() => {
+      const g = window.__game, bp = g.buddy.root.position;
+      for (let i = 0; i < 60; i++) {
+        const v = g.view();
+        const want = Math.atan2(bp.x - v.cam[0], bp.z - v.cam[2]), cur = Math.atan2(v.dir[0], v.dir[2]);
+        const diff = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
+        if (Math.abs(diff) < 0.02) break;
+        // 实测 look(dx) 每单位约 -0.00062 弧度（向右为负）；先转一半，再刷新矩阵读新朝向，避免过冲
+        g.look(-diff / 0.00062 * 0.5, 0);
+        g.astronaut.root.parent.updateMatrixWorld(true);
+      }
+    });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `artifacts/step${step}-fps-buddy.png` });
+    await page.keyboard.press("KeyZ"); // 切回第三人称
+    await page.waitForTimeout(800);
+    console.log(`screenshot artifacts/step${step}-tps.png, -fps.png, -fps-buddy.png`);
+  }
+
   // 第 12 步起：从宇航员正侧面平视取景，看待机站姿（腿是否伸直）
   if (step >= 12) {
     await page.evaluate(() => window.__game.gui.close());

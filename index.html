@@ -8,9 +8,36 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
       canvas { display: block; }
+      /* 第一人称头盔面罩：纯 CSS 全屏遮罩，不建 3D 玻璃。pointer-events:none 不挡鼠标/指针锁定；
+         z-index 低于 lil-gui（1001），面板照常可点。只在第一人称时加 .on 显示 */
+      #helmet {
+        position: fixed; inset: 0; pointer-events: none; z-index: 10;
+        opacity: 0; transition: opacity 0.25s ease;
+      }
+      #helmet.on { opacity: 1; }
+      /* 1) 暗角：面罩边缘弧形压暗，中心完全透明 */
+      #helmet {
+        background:
+          radial-gradient(ellipse 78% 72% at 50% 50%, transparent 58%, rgba(4, 8, 16, 0.55) 86%, rgba(2, 4, 8, 0.92) 100%);
+      }
+      /* 2) 玻璃反光：左上一道弧形高光 + 右下一点冷色反射，都很淡 */
+      #helmet::before {
+        content: ""; position: absolute; inset: 0;
+        background:
+          radial-gradient(ellipse 46% 30% at 26% 18%, rgba(255, 255, 255, 0.10), transparent 70%),
+          radial-gradient(ellipse 30% 22% at 78% 82%, rgba(150, 190, 255, 0.06), transparent 70%),
+          linear-gradient(118deg, transparent 30%, rgba(255, 255, 255, 0.035) 38%, transparent 46%);
+      }
+      /* 3) 极淡的噪点：一张小 SVG 分形噪声平铺，透明度很低（静态，不耗 GPU） */
+      #helmet::after {
+        content: ""; position: absolute; inset: 0; opacity: 0.05; mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
     </style>
   </head>
   <body>
+    <!-- 第一人称头盔面罩遮罩（纯装饰，对读屏隐藏） -->
+    <div id="helmet" aria-hidden="true"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

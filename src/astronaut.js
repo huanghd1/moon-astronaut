@@ -145,8 +145,11 @@ export function buildAstronaut(root) {
   band.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), elL.clone().sub(shL).normalize());
   place("UpperArm.L", band, shL.clone().lerp(elL, 0.45));
   root.name = "astronaut";
+  // 第一人称：相机挂在头骨上。眼睛在头盔中心（hc = 头骨上方 0.1H）略偏前，比头盔顶低得多
+  const headBone = bone("Head");
+  const eye = headBone.worldToLocal(hc.clone().add(new THREE.Vector3(0, -0.01 * H, 0.06 * H)));
   const legs = createLegStraightener(root, bone, wp, H);
-  return { root, materials: mats, parts, H, legs };
+  return { root, materials: mats, parts, H, legs, headBone, eye };
 }
 
 // 待机直腿：RobotExpressive 的静止姿态和 Idle 片段都是半蹲（膝盖弯 33–41°）。

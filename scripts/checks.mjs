@@ -613,4 +613,6 @@ step12.push({
     return { ok, info: `default ${before.gui} -> saved ${stored} -> after reload ${JSON.stringify(after)} -> cleared ${JSON.stringify(cleared)} store=${left}` };
   },
 });
-export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8, 9: step9, 10: step10, 11: step11, 12: step12 };
+// 第 13 步：Z 键第一人称 + 头盔面罩（按要求只截图，不写断言）
+const step13 = [];
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8, 9: step9, 10: step10, 11: step11, 12: step12, 13: step13 };
