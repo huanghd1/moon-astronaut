@@ -554,4 +554,24 @@ step10.push({
     return { ok, info: `fps off ${off.toFixed(1)} -> maxed ${on.toFixed(1)}, live meteors ${n.meteors} comets ${n.comets}` };
   },
 });
-export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8, 9: step9, 10: step10 };
+// 第 11 步：地照（Earthshine）
+const step11 = [];
+step11.push({
+  name: "earthshine: cool blue, no shadows, comes from the Earth, GUI slider",
+  async run(page) {
+    const r = await ev(page, () => {
+      const g = window.__game, l = g.lights.earthshine;
+      const dir = l.position.clone().sub(l.target.position).normalize();
+      const c = g.gui.controllersRecursive().find((x) => x.object === l && x.property === "intensity");
+      return {
+        intensity: l.intensity, castShadow: l.castShadow,
+        blueBias: l.color.b - l.color.r,
+        fromEarth: dir.dot(g.sky.earthDir),
+        slider: c ? c._name : null,
+      };
+    });
+    const ok = r.intensity >= 0.6 && r.intensity <= 2 && !r.castShadow && r.blueBias > 0.3 && r.fromEarth > 0.999 && !!r.slider;
+    return { ok, info: JSON.stringify(r) };
+  },
+});
+export const checks = { 1: step1, 2: step2, 3: step3, 4: step4, 5: step5, 6: step6, 7: step7, 8: step8, 9: step9, 10: step10, 11: step11 };

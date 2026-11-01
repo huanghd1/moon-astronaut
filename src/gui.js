@@ -1,7 +1,7 @@
 import GUI from "lil-gui";
 
 // 环境面板：每个控件 onChange 直接改 uniform / 材质 / 灯光，画面实时变化
-export function createGui({ sky, post, terrain, sunLight, renderer, onSkyChange = () => {} }) {
+export function createGui({ sky, post, terrain, sunLight, earthshine, renderer, onSkyChange = () => {} }) {
   const gui = new GUI({ title: "环境 Environment" });
   gui.close(); // 默认折叠，不遮挡右上角的太阳构图
   const s = sky.settings;
@@ -15,6 +15,7 @@ export function createGui({ sky, post, terrain, sunLight, renderer, onSkyChange 
   fSky.add(s, "starIntensity", 0, 3, 0.05).name("星空亮度").onChange(applySky);
   fSky.add(s, "milkyWay", 0, 3, 0.05).name("银河亮度").onChange(applySky);
   fSky.add(sunLight, "intensity", 0, 10, 0.1).name("太阳光强");
+  fSky.add(earthshine, "intensity", 0, 3, 0.05).name("地照强度");
   // 天象：直接改 events.settings，下一帧生效（频率=泊松过程的速率，强度=亮度+尾长）
   const ev = sky.events.settings;
   const fEvents = gui.addFolder("天象 Sky Events");

@@ -54,9 +54,12 @@ scene.add(slab.group);
 const sky = createSky();
 scene.add(sky.group);
 
-// 月面光照：真空里只有硬朗的太阳直射光 + 很弱的冷色地照/天光补光
+// 月面光照：真空里只有硬朗的太阳直射光 + 冷色地照/天光补光
 scene.add(new THREE.HemisphereLight(0x6f86b8, 0x1a1a1a, 0.12));
-const earthshine = new THREE.DirectionalLight(0x9db8ff, 0.1);
+// 地照（Earthshine）：从地球方向打来的冷蓝平行光，不投影，只把背光面从死黑里托起来一点。
+// 原来 0.1（太阳的 2%）几乎看不见；1.1 约为太阳的 1/4，暗部能看出冷蓝层次
+const earthshine = new THREE.DirectionalLight(0x7fa6ff, 1.1);
+earthshine.castShadow = false;
 scene.add(earthshine);
 const sun = new THREE.DirectionalLight(0xfff2e0, 4.2);
 const SUN_DIR = sky.sunDir;
@@ -143,7 +146,7 @@ const post = createPost(renderer, scene, camera);
 post.setSize(window.innerWidth, window.innerHeight);
 
 // 环境面板（右上角，可折叠）
-const gui = createGui({ sky, post, terrain, sunLight: sun, renderer, onSkyChange: () => astroEnv.invalidate() });
+const gui = createGui({ sky, post, terrain, sunLight: sun, earthshine, renderer, onSkyChange: () => astroEnv.invalidate() });
 
 const clock = new THREE.Clock();
 let frames = 0;
@@ -198,6 +201,7 @@ window.__game = {
     camera.lookAt(controls.target);
   },
   astronaut,
+  lights: { sun, earthshine },
   gui,
   astroEnv,
   buddy,

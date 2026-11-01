@@ -75,6 +75,21 @@ try {
     if (!r.ok) code = 1;
   }
 
+  // 第 11 步起：站在宇航员和地球之间回头看（背光面），地照开/关各存一张
+  if (step >= 11) {
+    await page.evaluate(() => {
+      const g = window.__game, q = g.playerPos(), e = g.sky.earthDir, h = Math.hypot(e.x, e.z);
+      g.freeCamera([q.x + e.x / h * 7, q.y + 2.2, q.z + e.z / h * 7], [q.x, q.y + 1, q.z]);
+    });
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: `artifacts/step${step}-earthshine.png` });
+    const es = await page.evaluate(() => { const l = window.__game.lights.earthshine, v = l.intensity; l.intensity = 0.1; return v; });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `artifacts/step${step}-earthshine-old.png` });
+    await page.evaluate((v) => { window.__game.lights.earthshine.intensity = v; }, es);
+    console.log(`screenshot artifacts/step${step}-earthshine.png (+ -old: intensity 0.1 for comparison)`);
+  }
+
   // 第 9 步起：断言跑完后从地图角落外侧取景，另存一张地层侧壁截图
   if (step >= 9) {
     await page.evaluate(() => {
