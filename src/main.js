@@ -81,7 +81,7 @@ const rimLight = new THREE.DirectionalLight(0x9fc4ff, 0.6);
 scene.add(rimLight, rimLight.target);
 
 // 骨骼与动画来自 CC0 机器人，外形替换为几何体拼的小宇航员
-const gltf = await new GLTFLoader().loadAsync("/models/RobotExpressive.glb");
+const gltf = await new GLTFLoader().loadAsync(import.meta.env.BASE_URL + "models/RobotExpressive.glb");
 const astronaut = buildAstronaut(gltf.scene);
 // 面罩反射环境：跟随太阳/地球方向，方向变化时重新烘焙 PMREM
 const astroEnv = createReflectionEnv(renderer, sky.sunDir, sky.earthDir);
@@ -89,7 +89,7 @@ astroEnv.bind(Object.values(astronaut.materials));
 astroEnv.update();
 
 // 小机器人跟班：另载一份 CC0 RobotExpressive（宇航员那份的外形已被替换）
-const buddyGltf = await new GLTFLoader().loadAsync("/models/RobotExpressive.glb");
+const buddyGltf = await new GLTFLoader().loadAsync(import.meta.env.BASE_URL + "models/RobotExpressive.glb");
 const buddy = createCompanion(buddyGltf, moon.heightAt);
 scene.add(buddy.root);
 
